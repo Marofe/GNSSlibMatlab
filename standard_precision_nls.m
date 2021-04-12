@@ -17,7 +17,7 @@ addpath('data')
 % file='circular';
 % file='rect';
 % file='helic';
- file='gnss_logger_dat-2021-01-27-13-14-20';
+file='gnss_logger_dat-2021-01-27-13-14-20';
 ephemeris = readRinexNav([file '.nav']);
 [p0,allObs]=readRinexObs([file '.obs']);
 % orbit=readSP3file('igs21423.sp3');
