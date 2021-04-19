@@ -73,6 +73,7 @@ for k=1:length(time)
             j=id(j);
             toe=nav(18,j); %time of ephemeris
 %             txTime=nav(23,j);
+            doy=doyFromGPST(epoch(m,1:2));
             TGD=nav(22,j); %Total Group Delay (instrumental error)
             %% Observables
             r=epoch(m,5); %pseudo-range (~5m)
@@ -118,10 +119,7 @@ for k=1:length(time)
                 drel=2*mu/(c^2)*log((rhoSat+rhoRcv+rho)/(rhoSat+rhoRcv-rho));
                 dtrel=-2*sqrt(mu*a)/(c^2)*ecc*sin(E);
                 %% Compute Tropospheric delay
-                dwet=0.1;
-                ddry=2.3*exp(-0.116*1e-3*lla(3));
-                tilm=1.001/sqrt(0.002001+sin(elev)^2);
-                trop=(ddry+dwet)*tilm; %~90% of the delay
+                trop=troposphericModel(lla,doy,elev);
                 totalTrop=totalTrop+trop;
                 %% Compute Ionospheric delay
                 %Klobuchar Coeff from nav msg.
@@ -181,8 +179,9 @@ for k=1:length(time)
                 tilR=rho+cdt-c*dTs+trop+ion; %predicted pseudo-range
                 res=[res;r-tilR];
                 H=[H;-range'/rho 1];
-                %Budget (1sigma) = (~1m noise strength+~(50cm-9m) elev
                 sigmaR=10/SNR+3*exp(-2*elev/(pi/2));
+%                 a=0.13;b=0.53;c=10; %from MOPS
+%                 sigmaR=a+b*exp(-rad2deg(elev)/c);
                 W=[W 1/sigmaR^2];
             end
         end

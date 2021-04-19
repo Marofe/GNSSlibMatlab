@@ -28,7 +28,7 @@ if tk>302400
 elseif tk<-302400
     tk=tk+604800;
 end
-
+%1week = 604800s
 %% Compute the mean anomaly
 M=M0+(sqrt(mu/a^3)+deltan)*tk;
 
@@ -37,7 +37,7 @@ E=M;
 iter=1;
 iterMax=100;
 while abs(E-M-ecc*sin(E))>1e-15 && iter<=iterMax
-    %Newton's method
+    %Newton-Rapshon's method
     iter=iter+1;
     if iter>iterMax
         error('Max Iteration exceeded!')

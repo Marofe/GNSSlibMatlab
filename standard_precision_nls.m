@@ -5,14 +5,15 @@ format long
 addpath('gnsslib')
 addpath('data')
 %% To-do-list
-% -> Tropospheric model
 % -> Glonass
 % -> Carrier-phase positioning
 % -> Kalman-filter
 % -> IMM-Kalman-filter
 % -> DGPS
 % -> Kinematic
-
+% RMSE: 0.854 (m)
+% RMSE RTKLIB: 1.599 (m)
+% Gain: 87.28%
 %% GPS Standard Precision Processing (NLS)
 % file='circular';
 % file='rect';
@@ -24,7 +25,7 @@ ephemeris = readRinexNav([file '.nav']);
 %% Load RTKLIB files
 diffGnss=loadGnssData(['data/' file '-diff.pos']);
 singleGnss=loadGnssData(['data/' file '-single-gps.pos']);
-%singleGnss=loadGnssData('gnss_logger_dat-2021-01-27-13-14-20-single-gps-sp3.pos');
+singleGlabGnss=loadGlabGnssData('glab-2021-01-27.pos');
 %%
 nav=ephemeris.gpsEphemeris;
 atmParam=ephemeris.ionosphericParameters;
@@ -58,9 +59,10 @@ figure
 plot(diffGnss(:,7))
 hold on
 plot(singleGnss(:,7))
+plot(singleGlabGnss(:,6))
 plot(alt)
 grid on
-legend('RTKLIB-Diff','RTKLIB-single','Matlab')
+legend('RTKLIB-Diff','RTKLIB-single','gLab-single','Matlab')
 figure
 plot(diffGnss(1:end-1,7)-alt)
 hold on
