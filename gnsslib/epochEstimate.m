@@ -1,10 +1,4 @@
-function [time,p,ns,dop,atmDelay]=leastSquareGpsSolution(nav,obs,p0,elevMask,atmParam)
-% Generate the standard precision solution (~5m) for GPS constellation
-% input:
-%       nav         -> broadcast nav messages
-%       obs         -> observables (gps only)
-%       p0          -> approximated initial position (ECEF)
-%       elevMask    -> minimal elevation angle
+function [hatp] = epochEstimate(p0,epoch,nav,atmParam,trcv,x,tems_ref,elevMask)
 %% Constants
 mu=3986004.418e8;% gravitational constant (m^3/s^2)
 wie=7292115.1467e-11; %Earth rotation rate (rad/s)
@@ -13,87 +7,64 @@ R0=6378137; %Earth Radius
 earth_ecc=0.0818191908425; %Eccentricity of Earth
 phi_p=deg2rad(78.3); %magnet pole lat
 lambda_p=deg2rad(291); %magnet pole lon
-%% Satellite Orbit
-% keplerArray(1)  = svprn;
-% keplerArray(2)  = af2;
-% keplerArray(3)  = M0;
-% keplerArray(4)  = roota;
-% keplerArray(5)  = deltan;
-% keplerArray(6)  = ecc;
-% keplerArray(7)  = omega;
-% keplerArray(8)  = cuc;
-% keplerArray(9)  = cus;
-% keplerArray(10) = crc;
-% keplerArray(11) = crs;
-% keplerArray(12) = i0;
-% keplerArray(13) = idot;
-% keplerArray(14) = cic;
-% keplerArray(15) = cis;
-% keplerArray(16) = Omega0;
-% keplerArray(17) = Omegadot;
-% keplerArray(18) = toe;
-% keplerArray(19) = af0;
-% keplerArray(20) = af1;
-% keplerArray(21) = week_toe;
-% keplerArray(22) = tgd;
-% keplerArray(23) = txTime;
-% keplerArray(24) = toc;
-% obs=[gpsWeek,tow,satConst,satID,pseudorange,rangeLLI,rangeStrength,phase,phaseLLI,phaseStrength,doppler,SNR];
 %%
-fprintf('Processing gnss observations...\n')
-time=unique(obs(:,2));
-p=zeros(length(time),4);
-dop=zeros(length(time),4);
-ns=zeros(length(time),1);
-atmDelay=zeros(length(time),2);
-for k=1:length(time)
-    %% Epoch
-    trcv=time(k);
-    epoch=obs(obs(:,2)==trcv,:);
-    Ni=size(epoch,1);
+    hatp=p0;
     cdt=0;
-    if k>1
-        hatp=p(k-1,:)';
-    else
-        hatp=[p0;cdt];
-    end
     s=1;
     pref=zeros(4,1);
+    Ni=size(epoch,1);
+    llaRef=SingleLlaFromEcef(x(1:3));
     while norm(hatp-pref)>1e-3 && s<=15
         lla=SingleLlaFromEcef(hatp(1:3));
         res=[];
         H=[];
         W=[];
-        totalTrop=0;
-        totalIon=0;
         for m=1:Ni
             satId=epoch(m,4);
             id=find(nav(1,:)==satId);        %select all ephemeris for the satellite
-            [~,j]=min(abs(time(k)-nav(18,id)));  %seek for the most recent orbit parameters
+            [~,j]=min(abs(trcv-nav(18,id)));  %seek for the most recent orbit parameters
             j=id(j);
             toe=nav(18,j); %time of ephemeris
-%             txTime=nav(23,j);
             doy=doyFromGPST(epoch(m,1:2));
             TGD=nav(22,j); %Total Group Delay (instrumental error)
             %% Observables
-            r=epoch(m,5); %pseudo-range (~5m)
-            %phase=epoch(m,8); %carrier-phase (~10cm+ambiguity)
-            %doppler=epoch(m,11); %doppler frequency
-            SNR=epoch(m,end); %Signal-to-Noise ratio
-            %% Compute satellite clock offset
+            [satPosRef,E,a]=satPosition(nav(:,j),tems_ref(m));
+            theta=wie*norm(satPosRef-x(1:3))/c;
+            satPosRef=rotZ(theta)*satPosRef;
+            rangeRef=satPosRef-x(1:3);
+            rhoRef=norm(rangeRef);
+            rhoSatRef=norm(satPosRef);
+            rhoRcvRef=norm(x(1:3));
+            Cen=DCM_en(llaRef(1),llaRef(2));
+            losRef=Cen'*rangeRef/rhoRef; %Line of Sight (LOS)
+            azimRef=atan2(losRef(1),losRef(2)); %Azimute (NED frame)
+            elevRef=asin(-losRef(3)); %Elevation (rad) (NED frame)
             af0=nav(19,j);
             af1=nav(20,j);
             af2=nav(2,j);
+            dtSatRef=af0+af1*(tems_ref(m)-toe)+af2*(tems_ref(m)-toe)^2;
+            ecc=nav(6,j); %eccentricity of sat orbit
+            dtRelRef=-2*sqrt(mu*a)/(c^2)*ecc*sin(E);
+            dTref=dtSatRef+dtRelRef-TGD;
+            drelRef=2*mu/(c^2)*log((rhoSatRef+rhoRcvRef+rhoRef)/(rhoSatRef+rhoRcvRef-rhoRef));
+            tropRef=troposphericModel(llaRef,doy,elevRef);
+            ionRef=ionosphericModel(atmParam,llaRef,elevRef,azimRef,trcv+x(4)/c);
+            SNR=epoch(m,end); %Signal-to-Noise ratio
+            sigmaRef=10/SNR+3*exp(-2*elevRef/(pi/2));
+            r=rhoRef+drelRef+x(4)-c*dTref+tropRef+ionRef+sigmaRef*randn; %pseudo-range (~5m)
+            %phase=epoch(m,8); %carrier-phase (~10cm+ambiguity)
+            %doppler=epoch(m,11); %doppler frequency
+            %% Compute satellite clock offset
             tc=toe;
-            tems0=trcv+(cdt-r)/c;
+            tems0=trcv+(cdt-r)/c; %rough emission time
             dtsat0=af0+af1*(tems0-tc)+af2*(tems0-tc)^2;
             %% Compute relativistic correction
             [~,E,a]=satPosition(nav(:,j),tems0);
-            ecc=nav(6,j);
+            ecc=nav(6,j); %eccentricity of sat orbit
             dtrel0=-2*sqrt(mu*a)/(c^2)*ecc*sin(E);
-            %% Compute the emission time
+            %% Update the emission time
             dTs=dtsat0+dtrel0-TGD;
-            tems=trcv+cdt/c-(r/c+dTs); %(GPST)
+            tems=tems0-dTs; %(GPST)
             %update satellite clock offset
             dtsat=af0+af1*(tems-tc)+af2*(tems-tc)^2;
             %% Compute satellite position (at emission time)
@@ -101,7 +72,8 @@ for k=1:length(time)
             [satPos0,E,a]=satPosition(nav(:,j),tems);
             range0=satPos0-hatp(1:3);
             rho0=norm(range0); %approx. geometric range
-            %% Take in account the Earth's rotation
+            %% Compute satellite position (reception time)
+            % Take in account the Earth's rotation
             theta=wie*rho0/c;
             satPos=rotZ(theta)*satPos0;
             rhoSat=norm(satPos);
@@ -119,7 +91,6 @@ for k=1:length(time)
                 dtrel=-2*sqrt(mu*a)/(c^2)*ecc*sin(E);
                 %% Compute Tropospheric delay
                 trop=troposphericModel(lla,doy,elev);
-                totalTrop=totalTrop+trop;
                 %% Compute Ionospheric delay
                 %Klobuchar Coeff from nav msg.
                 alpha0=atmParam(1,1);
@@ -171,7 +142,6 @@ for k=1:length(time)
                 else
                     ion=c*F*DC; %night
                 end
-                totalIon=totalIon+ion;
                 %% Pseudo-range
                 rho=rho+drel; %geom dist + rel offset (~3cm)
                 dTs=dtsat+dtrel-TGD; %total sat clock offset (sat+rel+inst)
@@ -198,22 +168,5 @@ for k=1:length(time)
         H=H(satValid,:);
         hatp=hatp+(H'*W*H)\H'*W*res(satValid);
     end
-    p(k,:)=hatp';
-    ns(k)=size(H,1);
-    P=inv(H'*W*H);
-    %% Compute the Dilusion of Precision (DOP)
-    Pn=Cen'*P(1:3,1:3)*Cen; % ECEF->NED
-    dop(k,1)=sqrt(trace(Pn)); %Geometric (GDOP)
-    dop(k,2)=sqrt(Pn(1,1)+Pn(2,2)); %Horizontal (HDOP)
-    dop(k,3)=sqrt(Pn(3,3)); %Vertical (VDOP)
-    dop(k,4)=sqrt(P(4,4)); %Time (TDOP)
-    %% Atmospheric delay
-    atmDelay(k,1)=totalTrop/ns(k); %ZTD (Zenith Tropospheric Delay)
-    atmDelay(k,2)=totalIon/ns(k); %Ionospheic
-    %
-    if ~mod(k,round(length(time)/10))
-        fprintf('*')
-    end
 end
-fprintf('\nProcessing finished!')
-end
+

@@ -1,4 +1,4 @@
-function [time,p,ns,dop,atmDelay]=leastSquareGpsSolution(nav,obs,p0,elevMask,atmParam)
+function [time,p,ns,dop,atmDelay]=leastSquareGpsSolutionBootstrap(nav,obs,p0,elevMask,atmParam)
 % Generate the standard precision solution (~5m) for GPS constellation
 % input:
 %       nav         -> broadcast nav messages
@@ -69,10 +69,9 @@ for k=1:length(time)
         for m=1:Ni
             satId=epoch(m,4);
             id=find(nav(1,:)==satId);        %select all ephemeris for the satellite
-            [~,j]=min(abs(time(k)-nav(18,id)));  %seek for the most recent orbit parameters
+            [~,j]=min(abs(trcv-nav(18,id)));  %seek for the most recent orbit parameters
             j=id(j);
             toe=nav(18,j); %time of ephemeris
-%             txTime=nav(23,j);
             doy=doyFromGPST(epoch(m,1:2));
             TGD=nav(22,j); %Total Group Delay (instrumental error)
             %% Observables
@@ -93,15 +92,16 @@ for k=1:length(time)
             dtrel0=-2*sqrt(mu*a)/(c^2)*ecc*sin(E);
             %% Compute the emission time
             dTs=dtsat0+dtrel0-TGD;
-            tems=trcv+cdt/c-(r/c+dTs); %(GPST)
+            tems=tems0-dTs; %(GPST)
             %update satellite clock offset
             dtsat=af0+af1*(tems-tc)+af2*(tems-tc)^2;
-            %% Compute satellite position (at emission time)
+            %% Compute satellite position (emission time)
             % From Broadcast nav msg
             [satPos0,E,a]=satPosition(nav(:,j),tems);
             range0=satPos0-hatp(1:3);
             rho0=norm(range0); %approx. geometric range
-            %% Take in account the Earth's rotation
+            %% Compute satellite position (reception time)
+            % Take in account the Earth's rotation
             theta=wie*rho0/c;
             satPos=rotZ(theta)*satPos0;
             rhoSat=norm(satPos);
@@ -112,8 +112,7 @@ for k=1:length(time)
             los=Cen'*range/rho; %Line of Sight (LOS)
             azim=atan2(los(1),los(2)); %Azimute (NED frame)
             elev=asin(-los(3)); %Elevation (rad) (NED frame)
-            elevd=rad2deg(elev); %Elevation (deg)
-            if elevd>elevMask
+            if rad2deg(elev)>elevMask
                 %% update relativistic corrections
                 drel=2*mu/(c^2)*log((rhoSat+rhoRcv+rho)/(rhoSat+rhoRcv-rho));
                 dtrel=-2*sqrt(mu*a)/(c^2)*ecc*sin(E);
@@ -183,6 +182,7 @@ for k=1:length(time)
 %                 sigmaR=a+b*exp(-rad2deg(elev)/c);
                 W=[W 1/sigmaR^2];
             end
+            emst(m)=tems;
         end
         %% Weighted-Least-Squared-Error Estimation
         W=diag(W);
@@ -198,15 +198,33 @@ for k=1:length(time)
         H=H(satValid,:);
         hatp=hatp+(H'*W*H)\H'*W*res(satValid);
     end
+    %% Bootstrap (parametric)
+    if k>1
+        p00=p(k-1,:)';
+    else
+        p00=[p0; 0];
+    end
+    for w=1:1000
+    hatpi(:,w)=epochEstimate(p00,epoch,nav,atmParam,time(k),hatp,emst,elevMask);
+    end
+    hatpm=mean(hatpi')';
+    Pb=cov(hatpi');
+    %% Result  
     p(k,:)=hatp';
     ns(k)=size(H,1);
     P=inv(H'*W*H);
     %% Compute the Dilusion of Precision (DOP)
     Pn=Cen'*P(1:3,1:3)*Cen; % ECEF->NED
+    Pnb=Cen'*Pb(1:3,1:3)*Cen; % ECEF->NED
     dop(k,1)=sqrt(trace(Pn)); %Geometric (GDOP)
     dop(k,2)=sqrt(Pn(1,1)+Pn(2,2)); %Horizontal (HDOP)
     dop(k,3)=sqrt(Pn(3,3)); %Vertical (VDOP)
     dop(k,4)=sqrt(P(4,4)); %Time (TDOP)
+    %
+    dopb(k,1)=sqrt(trace(Pnb)); %Geometric (GDOP)
+    dopb(k,2)=sqrt(Pnb(1,1)+Pnb(2,2)); %Horizontal (HDOP)
+    dopb(k,3)=sqrt(Pnb(3,3)); %Vertical (VDOP)
+    dopb(k,4)=sqrt(Pb(4,4)); %Time (TDOP)
     %% Atmospheric delay
     atmDelay(k,1)=totalTrop/ns(k); %ZTD (Zenith Tropospheric Delay)
     atmDelay(k,2)=totalIon/ns(k); %Ionospheic

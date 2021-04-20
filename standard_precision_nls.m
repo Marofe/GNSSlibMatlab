@@ -5,6 +5,7 @@ format long
 addpath('gnsslib')
 addpath('data')
 %% To-do-list
+% -> Bootstrap
 % -> Glonass
 % -> Carrier-phase positioning
 % -> Kalman-filter
