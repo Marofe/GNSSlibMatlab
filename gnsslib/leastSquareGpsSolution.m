@@ -191,13 +191,15 @@ for k=1:length(time)
         cdt=hatp(4);
         s=s+1;
     end
-    satValid=abs(res)<2.5;
-    if sum(~satValid)~=0
-        W=diag(W);
-        W=diag(W(satValid));
-        H=H(satValid,:);
-        hatp=hatp+(H'*W*H)\H'*W*res(satValid);
-    end
+    %% Consistency test
+%     satValid=abs(res)<2.5;
+%     if sum(~satValid)~=0
+%         W=diag(W);
+%         W=diag(W(satValid));
+%         H=H(satValid,:);
+%         hatp=hatp+(H'*W*H)\H'*W*res(satValid);
+%     end
+    %% result
     p(k,:)=hatp';
     ns(k)=size(H,1);
     P=inv(H'*W*H);

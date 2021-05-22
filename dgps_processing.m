@@ -34,11 +34,7 @@ obs=allObs(gpsObs,:);
 elevMask=15;
 %% Least Square Solution
 tic
-%[time,p,ns]=leastSquareGpsSolutionSP3(orbit,nav,obs,p0,elevMask,atmParam);
 [time,pls,nsls,dopls,atmDelayls]=leastSquareGpsSolution(nav,obs,p0,elevMask,atmParam);
-fprintf('\nElapsed time=%.3f min',toc/60);
-tic
-[time,pkf,nskf,dopkf,atmDelaykf]=ekfGpsSolution(nav,obs,p0,elevMask,atmParam);
 fprintf('\nElapsed time=%.3f min',toc/60);
 %% 
 prefdiff=diffGnss(1,2:4)'
@@ -57,25 +53,21 @@ plot(errdiff)
 title('Error w.r.t Diff')
 %%
 [lat, lon, alt]=llaFromEcef(pls(:,1),pls(:,2),pls(:,3));
-[latkf, lonkf, altkf]=llaFromEcef(pkf(:,1),pkf(:,2),pkf(:,3));
 figure
 plot(diffGnss(:,7))
 hold on
 plot(alt)
-plot(altkf)
 grid on
-legend('RTKLIB-Diff','ILS','EKF')
+legend('RTKLIB-Diff','ILS')
 figure
 plot(diffGnss(1:end-1,7)-alt)
 hold on
-plot(nskf,'*-')
 plot(diffGnss(:,7)-singleGnss(:,7))
 plot(singleGnss(:,9),'o-')
 title('height error')
 legend('Matlab','ns','RTKLIB','ns')
 grid on
 figure
-subplot(2,1,1)
 plot(diffGnss(1:end-1,7)-alt)
 hold on
 plot(2*dopls(:,3),'k--')
@@ -83,22 +75,12 @@ plot(-2*dopls(:,3),'k--')
 grid on
 legend('Height Error','+vdop','-vdop')
 title('ILS')
-subplot(2,1,1)
-plot(diffGnss(1:end-1,7)-altkf)
-hold on
-plot(2*dopkf(:,3),'k--')
-plot(-2*dopkf(:,3),'k--')
-grid on
-legend('Height Error','+vdop','-vdop')
-title('EKF')
-subtitle('Height Residue')
 figure
 plot(diffGnss(:,5),diffGnss(:,6),'o-')
 hold on
 % plot(singleGnss(:,5),singleGnss(:,6),'x-')
 plot(lat,lon,'*-')
-plot(latkf,lonkf,'*-')
-legend('RTKLIB-Diff','SPP-ILS','SPP-EKF')
+legend('RTKLIB-Diff','SPP-ILS')
 grid on
 figure
 plot(atmDelayls)
