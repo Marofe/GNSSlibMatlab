@@ -101,13 +101,13 @@ while(epoch<nEpochs-1)
     satConst = data(:,1);
     satConst = satConst=='G'; % Satellites PRN number
     satID = real(str2doubleq(cellstr(data(:,2:3))));                              % Satellites PRN number
-    pseudorange = real(str2doubleq(cellstr(data(:,6:17))));
-    rangeLLI =real(str2doubleq(cellstr(data(:,18))));
-    rangeStrength=real(str2doubleq(cellstr(data(:,19))));
-    phase=real(str2doubleq(cellstr(data(:,21:33))));
+    pseudorange = real(str2doubleq(cellstr(data(:,6:17)))); %meters
+    rangeLLI =real(str2doubleq(cellstr(data(:,18)))); 
+    rangeStrength=real(str2doubleq(cellstr(data(:,19)))); 
+    phase=real(str2doubleq(cellstr(data(:,21:33)))); %Full-cycles
     phaseLLI = real(str2doubleq(cellstr(data(:,34))));
     phaseStrength=real(str2doubleq(cellstr(data(:,35))));
-    doppler=real(str2doubleq(cellstr(data(:,41:49))));
+    doppler=real(str2doubleq(cellstr(data(:,41:49)))); %hertz
     SNR=real(str2doubleq(cellstr(data(:,60:end))));
     obs(m+1:m+nSat,:) = [gpsWeek(epoch)*ones(nSat,1),tow(epoch)*ones(nSat,1),satConst,satID,pseudorange,rangeLLI,rangeStrength,phase,phaseLLI,phaseStrength,doppler,SNR];   % store data
     m=m+nSat;

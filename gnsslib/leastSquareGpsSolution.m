@@ -40,7 +40,7 @@ lambda_p=deg2rad(291); %magnet pole lon
 % keplerArray(24) = toc;
 % obs=[gpsWeek,tow,satConst,satID,pseudorange,rangeLLI,rangeStrength,phase,phaseLLI,phaseStrength,doppler,SNR];
 %%
-fprintf('Processing gnss observations...\n')
+fprintf('\nProcessing GPS...\n')
 time=unique(obs(:,2));
 p=zeros(length(time),4);
 dop=zeros(length(time),4);

@@ -37,6 +37,7 @@ tic
 %[time,p,ns]=leastSquareGpsSolutionSP3(orbit,nav,obs,p0,elevMask,atmParam);
 [time,pls,nsls,dopls,atmDelayls]=leastSquareGpsSolution(nav,obs,p0,elevMask,atmParam);
 fprintf('\nElapsed time=%.3f min',toc/60);
+%% Iterated-EKF
 tic
 [time,pkf,nskf,dopkf,atmDelaykf]=ekfGpsSolution(nav,obs,p0,elevMask,atmParam);
 fprintf('\nElapsed time=%.3f min',toc/60);
