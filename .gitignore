@@ -1,3 +1,5 @@
 #DATASET
 data/
 *.asv
+*.pos
+*.mat
