@@ -1,5 +1,5 @@
 function [time,p,ns,dop]=leastSquareDgpsSolution(nav,obsBase,obsRover,p0base,p0rover,elevMask,atmParam)
-% Generate the standard precision solution (~5m) for GPS constellation
+% Generate the differential solution (code only) (~1m) for GPS constellation
 % input:
 %       nav         -> broadcast nav messages
 %       obs         -> observables (gps only)
@@ -35,6 +35,9 @@ c=2.99792458e8; %Speed of light in vacuum (m/s)
 % keplerArray(23) = txTime;
 % keplerArray(24) = toc;
 % obs=[gpsWeek,tow,satConst,satID,pseudorange,rangeLLI,rangeStrength,phase,phaseLLI,phaseStrength,doppler,SNR];
+%% Non-zeros range measurement
+obsRover(obsRover(:,5)==0,:)=[];
+obsBase(obsBase(:,5)==0,:)=[];
 %%
 fprintf('\nProcessing DGPS...\n')
 time=unique(obsRover(:,2));

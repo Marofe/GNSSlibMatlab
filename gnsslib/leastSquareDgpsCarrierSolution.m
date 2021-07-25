@@ -37,6 +37,11 @@ lambda1=c/f1; %L1 GPS wavelength
 % keplerArray(23) = txTime;
 % keplerArray(24) = toc;
 % obs=[gpsWeek,tow,satConst,satID,pseudorange,rangeLLI,rangeStrength,phase,phaseLLI,phaseStrength,doppler,SNR];
+%% Non-zeros phase/range measurement
+obsRover(obsRover(:,8)==0,:)=[];
+obsBase(obsBase(:,8)==0,:)=[];
+obsRover(obsRover(:,5)==0,:)=[];
+obsBase(obsBase(:,5)==0,:)=[];
 %%
 fprintf('\nProcessing DGPS-Carrier...\n')
 time=unique(obsRover(:,2));

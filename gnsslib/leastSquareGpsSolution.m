@@ -39,6 +39,8 @@ lambda_p=deg2rad(291); %magnet pole lon
 % keplerArray(23) = txTime;
 % keplerArray(24) = toc;
 % obs=[gpsWeek,tow,satConst,satID,pseudorange,rangeLLI,rangeStrength,phase,phaseLLI,phaseStrength,doppler,SNR];
+%% Non-zeros range measurement
+obs(obs(:,5)==0,:)=[];
 %%
 fprintf('\nProcessing GPS...\n')
 time=unique(obs(:,2));

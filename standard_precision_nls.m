@@ -62,10 +62,10 @@ title('Error w.r.t Diff')
 figure
 plot(diffGnss(:,7))
 hold on
+% plot(singleGnss(:,7))
 plot(alt)
-plot(altkf)
 grid on
-legend('RTKLIB-Diff','ILS','EKF')
+legend('RTKLIB-Diff','SPS-Matlab')
 figure
 plot(diffGnss(1:end-1,7)-alt)
 hold on
@@ -94,12 +94,12 @@ legend('Height Error','+vdop','-vdop')
 title('EKF')
 subtitle('Height Residue')
 figure
-plot(diffGnss(:,5),diffGnss(:,6),'o-')
+plot(diffGnss(:,5),diffGnss(:,6),'-')
 hold on
 % plot(singleGnss(:,5),singleGnss(:,6),'x-')
-plot(lat,lon,'*-')
-plot(latkf,lonkf,'*-')
-legend('RTKLIB-Diff','SPP-ILS','SPP-EKF')
+plot(lat,lon,'-')
+% plot(latkf,lonkf,'*-')
+legend('RTKLIB-Diff','SPP-Matlab')
 grid on
 figure
 plot(atmDelayls)

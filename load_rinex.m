@@ -8,7 +8,7 @@ file='gnss_logger_dat-2021-01-27-13-14-20';
 %file='gnss_logger_dat-2021-01-22-12-04-00';
 ephemeris = readRinexNav([file '.nav']);
 tic
-[XYZ_station,allObs]=readRinex302([file '.obs']);
+[XYZ_station,allObs]=readRinexObs([file '.obs']);
 toc
 %load('rinex_data20210122120400.mat')
 %% Constants

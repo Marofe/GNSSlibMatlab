@@ -1,4 +1,4 @@
-load('rinex_data1.mat')
+% load('rinex_data1.mat')
 plotEarth()
 k=1;
 %     timestamp = gpsWeekStart + seconds(time(k))

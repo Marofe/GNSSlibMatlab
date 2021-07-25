@@ -37,18 +37,18 @@ for k=1:N
         satId=epoch(m,4);
         id=find(nav(1,:)==satId);  %select all ephemeris for the satellite
         if size(id,2)>0
-        [~,j]=min(abs(time(k)-nav(18,id)));  %seek for the most recent orbit parameters
-        j=id(j); %nav msg for the m-th sat
-        tems=time(k)-epoch(m,5)/c; %(GPST)
-        psat=satPosition(nav(:,j),tems);
-        theta=wie*norm(psat-p0)/c;
-        psat=rotZ(theta)*psat;
-        Cen=DCM_en(lla(1),lla(2));
-        los=Cen'*(psat-p0)/norm(psat-p0); %Line of Sight (LOS)
-        azim(sats==satId,k)=atan2d(los(1),los(2)); %Azimute (NED frame)
-        elev(sats==satId,k)=asind(-los(3)); %Elevation (rad) (NED frame)
-%         polarplot(azim,90-elev,'o','color',satColor(sats==satId,:))
-%         drawnow
+            [~,j]=min(abs(time(k)-nav(18,id)));  %seek for the most recent orbit parameters
+            j=id(j); %nav msg for the m-th sat
+            tems=time(k)-epoch(m,5)/c; %(GPST)
+            psat=satPosition(nav(:,j),tems);
+            theta=wie*norm(psat-p0)/c;
+            psat=rotZ(theta)*psat;
+            Cen=DCM_en(lla(1),lla(2));
+            los=Cen'*(psat-p0)/norm(psat-p0); %Line of Sight (LOS)
+            azim(sats==satId,k)=atan2d(los(1),los(2)); %Azimute (NED frame)
+            elev(sats==satId,k)=asind(-los(3)); %Elevation (rad) (NED frame)
+            %         polarplot(azim,90-elev,'o','color',satColor(sats==satId,:))
+            %         drawnow
         end
     end
     if ~mod(k,round(N/10))
@@ -61,9 +61,9 @@ azim(azim==0)=NaN;
 elev(elev==0)=NaN;
 Non=numel(satsOn);
 for m=1:Non
-p{m}=polarplot(deg2rad(azim(sats==satsOn(m),:)),90-elev(sats==satsOn(m),:),'.','color',satColor(m,:));
-strLeg{m}=['G' num2str(satsOn(m))];
-text(deg2rad(azim(sats==satsOn(m),end)), 90-elev(sats==satsOn(m),end), ['G' num2str(satsOn(m))], 'horiz', 'center', 'vert', 'top', 'rotation', 0)
+    p{m}=polarplot(deg2rad(azim(sats==satsOn(m),:)),90-elev(sats==satsOn(m),:),'.','color',satColor(m,:));
+    strLeg{m}=['G' num2str(satsOn(m))];
+    text(deg2rad(azim(sats==satsOn(m),end)), 90-elev(sats==satsOn(m),end), ['G' num2str(satsOn(m))], 'horiz', 'center', 'vert', 'top', 'rotation', 0)
 end
 theta=0:0.1:2*pi;
 polarplot(theta,(90-elevMask)*ones(length(theta)),'k--')
