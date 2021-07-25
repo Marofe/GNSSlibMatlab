@@ -76,7 +76,7 @@ obsRef=obsBase(obsBase(:,4)==obsRover(1,4),:);
 load('single')
 %% Least Square Solution (Kinematic)
 tic
-[time2,pdiff2,nsdiff2,dopdiff2,dNa,baseline]=KinematicFloatSolution(ephemeris,obsBase,obsRover,p0base,p0rover,elevMask);
+[time2,pdiff2,pdiffs,dNa,dNas,baseline,satsOnView,sats]=KinematicSolution(ephemeris,obsBase,obsRover,p0base,p0rover,elevMask);
 dNa(dNa==0)=NaN;
 fprintf('\nElapsed time=%.3f min',toc/60);
 %% 
@@ -93,16 +93,24 @@ title('Error DGPS w.r.t RTKLIB-Diff')
 %%
 [lat2, lon2, alt2]=llaFromEcef(pls(:,1),pls(:,2),pls(:,3));
 [lat3, lon3, alt3]=llaFromEcef(pdiff2(:,1),pdiff2(:,2),pdiff2(:,3));
+% [lat3s, lon3s, alt3s]=llaFromEcef(pdiffs(:,1),pdiffs(:,2),pdiffs(:,3));
 %%
 figure
-plot(diffGnss(:,7))
+plot(diffGnss(:,7),'linewidth',1.5)
 hold on
-plot(diffGnssFloat(:,7))
-plot(alt2,'-')
-plot(alt3,'-')
+% plot(diffGnssFloat(:,7))
+plot(alt2,'-','linewidth',1.5)
+plot(alt3,'-','linewidth',1.5)
 grid on
-legend('RTKLIB-Diff','RTKLIB-float','Single','Kinematic')
+legend('RTKLIB-Diff','Single','Kinematic')
 %%
 figure
 plot(dNa')
 title('Ambiguity')
+%% Sats On View
+% satsOnView(satsOnView==0)=NaN;
+% figure
+% hold on
+% for j=1:numel(sats)
+%     plot(satsOnView(j,:)*sats(j),'linewidth',2)
+% end
