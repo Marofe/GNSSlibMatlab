@@ -8,12 +8,7 @@ addpath('data')
 % -> Glonass
 % -> IMM-Kalman-filter
 % -> Kinematic: 
-%           - pick as sat ref the highest elevation
-%           - solve ambiguity
 %           - smoothing
-% RMSE: 0.854 (m)
-% RMSE RTKLIB: 1.599 (m)
-% Gain: 87.28%
 %% GPS Standard Precision Processing (NLS)
 % file='circular';
 % file='rect';
@@ -76,7 +71,8 @@ obsRef=obsBase(obsBase(:,4)==obsRover(1,4),:);
 load('single')
 %% Least Square Solution (Kinematic)
 tic
-[time2,pdiff2,pdiffs,dNa,dNas,baseline,satsOnView,sats]=KinematicSolution(ephemeris,obsBase,obsRover,p0base,p0rover,elevMask);
+[time2,pdiff2,pdiffs,dNa,...
+    dNas,baseline,satsOnView,sats,Ra,ns]=KinematicSolution(ephemeris,obsBase,obsRover,p0base,p0rover,elevMask);
 dNa(dNa==0)=NaN;
 fprintf('\nElapsed time=%.3f min',toc/60);
 %% 
@@ -84,7 +80,7 @@ err2=diffGnss(1:end-1,2:4)-pls(:,1:3); %Single
 err3=diffGnss(1:end-1,2:4)-pdiff2(:,1:3); %DGPS-carrier
 mse2=sqrt(mean(mean(err2.^2))); %Single
 mse3=sqrt(mean(mean(err3.^2))); %DGPS-carrier
-fprintf('RMSE-Single: %.3f (m)\n',mse2)
+fprintf('\nRMSE-Single: %.3f (m)\n',mse2)
 fprintf('RMSE-DGPS-carrier: %.3f (m)\n',mse3)
 fprintf('Gain Carrier/Single: %.2f%%\n',(mse2/mse3-1)*100)
 figure
@@ -99,10 +95,11 @@ figure
 plot(diffGnss(:,7),'linewidth',1.5)
 hold on
 % plot(diffGnssFloat(:,7))
-plot(alt2,'-','linewidth',1.5)
+% plot(alt2,'-','linewidth',1.5)
 plot(alt3,'-','linewidth',1.5)
+plot(diffGnss(1,7)+(Ra>3),'s-g')
 grid on
-legend('RTKLIB-Diff','Single','Kinematic')
+legend('RTKLIB-Diff','Kinematic','FIX')
 %%
 figure
 plot(dNa')
@@ -114,3 +111,7 @@ title('Ambiguity')
 % for j=1:numel(sats)
 %     plot(satsOnView(j,:)*sats(j),'linewidth',2)
 % end
+figure
+plot(Ra)
+hold on
+plot(ns)

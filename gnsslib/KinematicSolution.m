@@ -1,4 +1,4 @@
-function [time,hx,hxs,hatNa,hatNas,baseline,satsOnView,sats]=KinematicSolution(ephemeris,obsBase,obsRover,pbase,p0rover,elevMask)
+function [time,hx,hxs,hatNa,hatNas,baseline,satsOnView,sats,Ra,ns]=KinematicSolution(ephemeris,obsBase,obsRover,pbase,p0rover,elevMask)
 % Generate the high precision solution (~5cm) for GPS constellation
 % input:
 %       nav         -> broadcast nav messages
@@ -41,9 +41,12 @@ baseline=zeros(N,1);
 %% Params
 iterMax=15; %maximum iterations of the ILS-update step
 dt=1; %1hz GPS
-sigmaVn=0.1; %north-acc noise (m/s/sqrt(s))
-sigmaVe=0.1; %east-acc noise (m/s/sqrt(s))
-sigmaVd=0.1; %down-acc noise (m/s/sqrt(s))
+sigmaVn=1; %north-acc noise (m/s/sqrt(s))
+sigmaVe=1; %east-acc noise (m/s/sqrt(s))
+sigmaVd=2; %down-acc noise (m/s/sqrt(s))
+sigmaN=0.0001; %Ambiguity fix
+sigmaNp=sqrt(5e-3); %Ambiguity fix
+Rthres=2;
 Px0=10*eye(6); %initial covariance (position&&velocity)
 Pna0=100*ones(Nsats,1); %initial covariance (ambiguities)
 %% Dynamic model (Const. Velocity)
@@ -198,19 +201,31 @@ for k=1:N
     baseline(k)=norm(pbase-hx(1:3,k));
     P=P0-K*(R+H*P0*H')*K';
     Px(:,:,k)=P(1:6,1:6);
-    Pnai=P(7:end,7:end);
     ns(k)=size(u,1);
     %% Ambiguity resolution
-%         hatN=D*hatx(7:end);
-%         G=blkdiag(eye(6),D);
-%         W=G*P*G';
-%         WN=W(7:end,7:end);
-%         WXN=W(1:6,7:end);
-%         optN=round(hatN);
-%         hx(:,k)=hx(:,k)+WXN/WN*(optN-hatN);
-    %     for s=1:Nii+1
-    %         sdNa(sats==satsOn(s),k)=optN(s);
-    %     end
+    hatN=D*hatx(7:end);
+    G=blkdiag(eye(6),D);
+    W=G*P*G';
+    WN=W(7:end,7:end);
+    iWN=eye(size(WN,1))/WN;
+    WXN=W(1:6,7:end);
+    [optN,rr] = mlambda(WN,hatN,2);
+    Ra(k)=((hatN-optN(:,2))'*iWN*(hatN-optN(:,2)))/((hatN-optN(:,1))'*iWN*(hatN-optN(:,1)));
+    if Ra(k)>=Rthres
+%         hxx=hx(:,k)+WXN*iWN*(optN(:,1)-hatN);
+        %% Update Ambiguities for the EKF
+        Nii=size(hatN,1);
+        GN=[zeros(Nii,6) D];
+        K=P*GN'/(sigmaN^2*eye(Nii)+GN*P*GN');
+        hatx=hatx+K*(optN(:,1)-GN*hatx);
+        hatx(7:end)=round(hatx(7:end));
+        P=P-K*(sigmaN^2*eye(Nii)+GN*P*GN')*K';
+        hx(:,k)=hatx(1:6);
+    end
+    %% Update Ambiguities state
+    for s=1:Nii
+      hatNa(sats==satsOn(s),k)=hatx(6+s);
+    end
     %% Compute the Dilusion of Precision (DOP)
     Pn=Cen'*P(1:3,1:3)*Cen; % ECEF->NED
     dop(k,1)=sqrt(trace(Pn)); %Geometric (GDOP)
@@ -224,7 +239,8 @@ for k=1:N
         hx(:,k+1)=A*hx(:,k);
         Q=blkdiag(zeros(3),Cen*Qv*Cen');
         Px(:,:,k+1)=A*Px(:,:,k)*A'+Q;
-        Pnai=Pnai+5e-3*eye(Nii+1);
+        Pnai=P(7:end,7:end);
+        Pnai=Pnai+sigmaNp^2*eye(Nii+1);
         Pnai=diag(Pnai);
         for s=1:Nii+1
             Pna(sats==satsOn(s),k+1)=Pnai(s);
