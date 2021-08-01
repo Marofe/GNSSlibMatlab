@@ -7,7 +7,7 @@ c=2.99792458e8; %Speed of light in vacuum (m/s)
 time=epochRover(1,2); %toe
 Ni=size(epochRover,1); %number of satellites (=measurements)
 %% allocate memmory
-missSat=zeros(Ni,1); %sats that are not found in the base obs
+flagMissSat=zeros(Ni,1); %sats that are not found in the base obs
 psat=zeros(3,Ni);
 elev=zeros(Ni,1);
 azim=zeros(Ni,1);
@@ -32,9 +32,9 @@ for m=1:Ni
         azim(m)=atan2(los(1),los(2)); %Azimute (NED frame)
         elev(m)=asin(-los(3)); %Elevation (rad) (NED frame)
     else
-        missSat(m)=1;
+        flagMissSat(m)=1;
     end
 end
 %% result
-satInfo=[epochRover(:,4) missSat elev azim psat' L'];
+satInfo=[epochRover(:,4) flagMissSat elev azim psat' L'];
 end

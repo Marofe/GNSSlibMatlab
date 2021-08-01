@@ -1,4 +1,4 @@
-function [time,hx,hxs,hatNa,hatNas,baseline,satsOnView,sats,Ra,ns]=KinematicSolution(ephemeris,obsBase,obsRover,pbase,p0rover,elevMask)
+function [time,hx,hatNa,satsOnView,sats,Ra,cycleSlip]=KinematicSolution(ephemeris,obsBase,obsRover,pbase,p0rover,elevMask)
 % Generate the high precision solution (~5cm) for GPS constellation
 % input:
 %       nav         -> broadcast nav messages
@@ -28,57 +28,73 @@ Nsats=numel(sats); %max. number of satellites
 %% Allocate memmory
 hx=zeros(6,N);
 Px=zeros(6,6,N);
-hxs=zeros(6,N);
-Pxs=zeros(6,6,N);
 hatNa=zeros(Nsats,N); %single-difference ambiguity
 Pna=zeros(Nsats,N); %single-difference ambiguity variance
-hatNas=zeros(Nsats,N); %single-difference ambiguity
-Pnas=zeros(Nsats,N); %single-difference ambiguity variance
+% hxs=zeros(6,N);
+% Pxs=zeros(6,6,N);
+% hatNas=zeros(Nsats,N); %single-difference ambiguity
+% Pnas=zeros(Nsats,N); %single-difference ambiguity variance
 dop=zeros(N,3);
-ns=zeros(N,1);
+cycleSlip=zeros(N,1);
 satsOnView=zeros(Nsats,N); %sats on
-baseline=zeros(N,1);
 %% Params
-iterMax=15; %maximum iterations of the ILS-update step
+iterMax=10; %maximum iterations of the ILS-update step
 dt=1; %1hz GPS
 sigmaVn=1; %north-acc noise (m/s/sqrt(s))
 sigmaVe=1; %east-acc noise (m/s/sqrt(s))
 sigmaVd=2; %down-acc noise (m/s/sqrt(s))
 sigmaN=0.0001; %Ambiguity fix
-sigmaNp=sqrt(5e-3); %Ambiguity fix
-Rthres=2;
-Px0=10*eye(6); %initial covariance (position&&velocity)
-Pna0=100*ones(Nsats,1); %initial covariance (ambiguities)
+sigmaNfloat=1;
+sigmaNfix=1e-3;
+sigmaNp=sigmaNfloat*ones(Nsats,1); %Ambiguity fix
+Rthres=3;
+%code/phase std = a*SNR+b/sin(elev)+c
+%code
+a1=0.1; %SNR contribution 
+b1=.01; %Elev contribution 
+c1=.5; %Independent noise 
+%phase
+a2=0; %SNR contribution 
+b2=0.003; %Elev contribution 
+c2=0.003; %Independent noise 
+%Initial variance
+p0=[1000*ones(1,3),10*ones(1,3)]; %position & velocity initial variance
+pN0=10000; %initial ambiguity & cycle slip variance
+flagFix=1;
 %% Dynamic model (Const. Velocity)
 A=[eye(3) dt*eye(3);zeros(3) eye(3)];
 Qv=diag([sigmaVn^2,sigmaVe^2,sigmaVd^2])*dt;
 %% Initialization
 hx(:,1)=[p0rover;zeros(3,1)];
 hatNa(:,1)=zeros(Nsats,1);
-Px(:,:,1)=Px0;
-Pna(:,1)=Pna0;
+Px(:,:,1)=diag(p0);
+Pna(:,1)=pN0*ones(Nsats,1);
 %% Iterated-EKF-Processing
 for k=1:N
     iter=1;
     err=inf;
     hatp=hx(1:3,k); %prior position
     hatv=hx(4:6,k); %prior velocity
-    xx0=[hatp;hatv];
+    hatx0=hx(:,k);
+    Px0=Px(:,:,k);
     %% Epochs
     %time(k) => time of epoch (toe)
     epoch=obsRover(obsRover(:,2)==time(k),:);
     epochBase=obsBase(obsBase(:,2)==time(k),:);
     % obs=[gpsWeek,tow,satConst,satID,pseudorange,rangeLLI,rangeStrength,phase,phaseLLI,phaseStrength,doppler,SNR];
     satInfo=getSatellitesInfo(epoch,epochBase,nav,hatp);
+    % satInfo=[satID flagMissSat elev azim psat' L']
     %% take as reference sat the highest elevation
     [maxElev,refSat]=max(satInfo(satInfo(:,2)==0,3));
     refSatId=satInfo(refSat,1);
     %satref position
     psatRef=satInfo(refSat,5:7)';
+    u1=satInfo(refSat,8:10);
     satsOnView(sats==refSatId,k)=1;
     %base obs sat ref
     baseRef=epochBase(epochBase(:,4)==refSatId,:);
     roverRef=epoch(refSat,:);
+    refSatInfo=satInfo(refSat,:);
     %remove obs of refsat from epoch and satInfo
     epoch(refSat,:)=[];
     satInfo(refSat,:)=[];
@@ -88,28 +104,35 @@ for k=1:N
     Phi1_r=roverRef(8)*lambda1; %phase-range sat1 (rover)
     SNR1_r=roverRef(end); %SNR sat1 (rover)
     
-    sigmaR1=10/SNR1_r+3*exp(-2*maxElev/(pi/2));
+    sigmaR1_rho=a1*SNR1_r+b1/sin(maxElev)+c1;
+    sigmaR1_phi=a2*SNR1_r+b2/sin(maxElev)+c2;
     
     %base ref measurements
     rho1_b=baseRef(5); %pseudo-range refsat (base)
     Phi1_b=baseRef(8)*lambda1; %phase-range refsat (base)
     SNR1_b=baseRef(end); %SNR refsat (base)
     
+    %Assumption: elevBase=elevRover
+    sigmaR1_rho_b=a1*SNR1_b+b1/sin(maxElev)+c1;
+    sigmaR1_phi_b=a2*SNR1_b+b2/sin(maxElev)+c2;
+    
+    R1_rho=sigmaR1_rho^2+sigmaR1_rho_b^2;
+    R1_phi=sigmaR1_phi^2+sigmaR1_phi_b^2;
+    
     Ni=size(epoch,1); %number of satellites (=measurements)
-    %% Prior Ambuities
+    %% Prior Ambiguities
     if k==1
         Na0=zeros(Nsats,1);
     else
         hatNa(sats==refSatId,k)=hatNa(sats==refSatId,k-1);
+        Pna(sats==refSatId,k)=Pna(sats==refSatId,k-1);
         for s=1:Ni
-            hatNa(sats==satInfo(s,1),k)=hatNa(sats==satInfo(s,1),k-1);
-            if epoch(s,9)~=0
-                %side-slip
-                Pna(sats==satInfo(s,1),k)=100;
-            end
+            hatNa(sats==epoch(s,4),k)=hatNa(sats==epoch(s,4),k-1);
+            Pna(sats==epoch(s,4),k)=Pna(sats==epoch(s,4),k-1);
         end
         Na0=hatNa(:,k);
     end
+    Pna0=Pna(:,k);
     %% ILS
     while err>1e-3 && iter<=iterMax
         lla=SingleLlaFromEcef(hatp);
@@ -117,47 +140,82 @@ for k=1:N
         z1=[];
         z2=[];
         satsOn=refSatId;
-        u=satInfo(refSat,8:10);
-        R=sigmaR1*sigmaR1';
+        u=u1;
+        R_rho=R1_rho; %single-diff
+        R_phi=R1_phi; %single-diff
+        
         for m=1:Ni
             elev=satInfo(m,3);
             if rad2deg(elev)>=elevMask
                 satId=epoch(m,4);
                 base=epochBase(epochBase(:,4)==satId,:);
-                if size(base,1)>0
-                    %satId found in the base epoch
+                if size(base,1)>0 %if satId was found in the base epoch
+                    %% Cycle-slip
+                    if epoch(m,9)~=0
+                        cycleSlip(k)=cycleSlip(k)+1;
+                        Pna0(sats==epoch(m,4))=pN0;
+                        hatNa(sats==epoch(m,4))=0;
+                        Na0(sats==epoch(m,4))=0;
+                        sigmaNp(sats==epoch(m,4))=sigmaNfloat;
+                    end
                     %% Observables
                     %rover
-                    rho_r=epoch(m,5); %pseudo-range (~5m) (rover)
-                    Phi_r=epoch(m,8)*lambda1; %phase-range (~10cm+ambiguity) (rover)
+                    rho_r=epoch(m,5); %pseudo-range 
+                    Phi_r=epoch(m,8)*lambda1; %phase-range 
                     %doppler=-epoch(m,11)*lambda1; %range-rate
-                    SNR_r=epoch(m,end); %Signal-to-Noise ratio (rover)
+                    SNR_r=epoch(m,end); %Signal-to-Noise ratio
+                    
+                    sigmaR_rho=a1*SNR_r+b1/sin(elev)+c1;
+                    sigmaR_phi=a2*SNR_r+b2/sin(elev)+c2;
+%                     if epoch(m,9)==2
+%                         sigmaR_phi=1000*sigmaR_phi;
+%                     end
                     
                     %base
-                    rho_b=base(5); %pseudo-range (~5m) (base)
-                    Phi_b=base(8)*lambda1; %phase-range (~10cm+ambiguity) (base)
+                    rho_b=base(5); %pseudo-range
+                    Phi_b=base(8)*lambda1; %phase-range
                     %doppler=-epoch(m,11)*lambda1; %range-rate
-                    SNR_b=base(end);  %Signal-to-Noise ratio (base)
+                    SNR_b=base(end);  %Signal-to-Noise ratio
+                    
+                    sigmaR_rho_b=a1*SNR_b+b1/sin(elev)+c1;
+                    sigmaR_phi_b=a2*SNR_b+b2/sin(elev)+c2;
+                    
+%                     if base(9)==2
+%                         sigmaR_phi_b=1000*sigmaR_phi_b;
+%                     end
+                    
+                    Rk_rho=sigmaR_rho^2+sigmaR_rho_b^2; %(single-difference)
+                    Rk_phi=sigmaR_phi^2+sigmaR_phi_b^2; %(single-difference)
                     
                     %% Compute satellite position (at emission time)
                     psat=satInfo(m,5:7)';
                     range=psat-hatp;
                     bar_rho=norm(range); %approx. geometric range
                     %% Compute Double Difference
-                    ddrho=(rho1_r-rho1_b)-(rho_r-rho_b); %rho_rb_1j
-                    ddPhi=(Phi1_r-Phi1_b)-(Phi_r-Phi_b); %rho_rb_1j
+                    drho1=rho1_r-rho1_b;
+                    drho=rho_r-rho_b;
+                    ddrho=drho1-drho; %rho_rb_1j
+                    
+                    dphi1=Phi1_r-Phi1_b;
+                    dphi=Phi_r-Phi_b;
+                    ddPhi=dphi1-dphi; %rho_rb_1j
                     %% Pseudo-range
-                    bar_ddrho=(norm(psatRef-hatp)-norm(psatRef-pbase))-(norm(psat-hatp)-norm(psat-pbase));
+                    bar_drho1=norm(psatRef-hatp)-norm(psatRef-pbase);
+                    bar_drho=norm(psat-hatp)-norm(psat-pbase);
+                    bar_ddrho=bar_drho1-bar_drho;
+                    
                     hat_ddrho=bar_ddrho; %predicted pseudo-range
                     hat_ddPhi=bar_ddrho+lambda1*(hatNa(sats==refSatId,k)-hatNa(sats==satId,k));  %predicted phase-range
                     %% Residuals
+                    z_drho=drho-bar_drho;
+                    z_dphi=dphi-bar_drho-lambda1*hatNa(sats==satId,k);
                     z1=[z1;ddPhi-hat_ddPhi]; %phase-range residual
                     z2=[z2;ddrho-hat_ddrho]; %pseudo-range residual
                     u=[u;range'/bar_rho];
                     satsOnView(sats==satId,k)=1;
                     satsOn=[satsOn;satId];
-                    sigmaR=10/SNR_r+3*exp(-2*elev/(pi/2));
-                    R=blkdiag(R,sigmaR*sigmaR');
+                    R_rho=blkdiag(R_rho,Rk_rho);
+                    R_phi=blkdiag(R_phi,Rk_phi);
                 else
                     warning('satelite not found in the base obs!')
                 end
@@ -167,29 +225,31 @@ for k=1:N
         pref=hatp;
         Nii=sum(satsOnView(:,k)==1)-1;
         D=[ones(Nii,1) -eye(Nii)];
-        H=[-D*u zeros(Nii,3) lambda1*D;-D*u zeros(Nii,Nii+1+3)];
+        H=[-D*u zeros(Nii,3) lambda1*D;...
+           -D*u zeros(Nii,Nii+1+3)];
         z=[z1;z2];
-        R=blkdiag(D*R/1000*D',D*R/10*D');
+        R=blkdiag(D*R_phi*D',D*R_rho*D');
         hatx=[hatp;hatv;zeros(Nii+1,1)]; %ith-prior
-        x0=[xx0;zeros(Nii+1,1)]; %first-prior
-        Pnai=zeros(Nii+1,1);
+        x0=[hatx0;zeros(Nii+1,1)]; %first-prior
+        Pnai0=zeros(Nii+1,1);
         
         for s=1:Nii+1
             hatx(6+s)=hatNa(sats==satsOn(s),k);
             x0(6+s)=Na0(sats==satsOn(s));
-            Pnai(s)=Pna(sats==satsOn(s),k);
+            Pnai0(s)=Pna0(sats==satsOn(s));
+            if Pnai0(s)==0
+                Pnai0(s)=pN0;
+            end
+            Pnai0(s)=Pnai0(s)+sigmaNp(sats==satsOn(s));
         end
         
-        P0=blkdiag(Px(:,:,k),diag(Pnai));
+        P0=blkdiag(Px0,diag(Pnai0));
         K=P0*H'/(R+H*P0*H');
         hatx=x0+K*(z+H*(hatx-x0));
         hatp=hatx(1:3);
         hatv=hatx(4:6);
         err=norm(hatp-pref);
-        if err>1e3
-            %outlier
-            hatp=pref;
-        else
+        if err<1e3
             for s=1:Nii+1
                 hatNa(sats==satsOn(s),k)=hatx(6+s);
             end
@@ -198,34 +258,43 @@ for k=1:N
     end
     %% result
     hx(:,k)=hatx(1:6);
-    baseline(k)=norm(pbase-hx(1:3,k));
     P=P0-K*(R+H*P0*H')*K';
     Px(:,:,k)=P(1:6,1:6);
-    ns(k)=size(u,1);
+    for s=1:Nii+1
+        Pna(sats==satsOn(s),k)=P(6+s,6+s);
+    end
     %% Ambiguity resolution
     hatN=D*hatx(7:end);
     G=blkdiag(eye(6),D);
     W=G*P*G';
     WN=W(7:end,7:end);
-    iWN=eye(size(WN,1))/WN;
-    WXN=W(1:6,7:end);
+%     iWN=eye(size(WN,1))/WN;
+%     WXN=W(1:6,7:end);
     [optN,rr] = mlambda(WN,hatN,2);
-    Ra(k)=((hatN-optN(:,2))'*iWN*(hatN-optN(:,2)))/((hatN-optN(:,1))'*iWN*(hatN-optN(:,1)));
-    if Ra(k)>=Rthres
+    Ra(k)=rr(2)/rr(1);
+    Pn=Cen'*P(1:3,1:3)*Cen; % ECEF->NED
+    if Ra(k)>=Rthres && sqrt(trace(Pn))<0.5 && flagFix==1
 %         hxx=hx(:,k)+WXN*iWN*(optN(:,1)-hatN);
         %% Update Ambiguities for the EKF
         Nii=size(hatN,1);
         GN=[zeros(Nii,6) D];
         K=P*GN'/(sigmaN^2*eye(Nii)+GN*P*GN');
         hatx=hatx+K*(optN(:,1)-GN*hatx);
-        hatx(7:end)=round(hatx(7:end));
+        %hatx(7:end)=round(hatx(7:end));
         P=P-K*(sigmaN^2*eye(Nii)+GN*P*GN')*K';
         hx(:,k)=hatx(1:6);
-    end
-    %% Update Ambiguities state
-    for s=1:Nii
-      hatNa(sats==satsOn(s),k)=hatx(6+s);
-    end
+        Pnai=P(7:end,7:end);      
+        Pnai=diag(Pnai);
+        for s=1:Nii
+            hatNa(sats==satsOn(s),k)=hatx(6+s);
+            Pna(sats==satsOn(s),k)=Pnai(s);
+            sigmaNp(sats==satsOn(s))=sigmaNfix;
+        end
+    else
+        for s=1:Nii
+            sigmaNp(sats==satsOn(s))=sigmaNfloat;
+        end
+    end 
     %% Compute the Dilusion of Precision (DOP)
     Pn=Cen'*P(1:3,1:3)*Cen; % ECEF->NED
     dop(k,1)=sqrt(trace(Pn)); %Geometric (GDOP)
@@ -239,12 +308,6 @@ for k=1:N
         hx(:,k+1)=A*hx(:,k);
         Q=blkdiag(zeros(3),Cen*Qv*Cen');
         Px(:,:,k+1)=A*Px(:,:,k)*A'+Q;
-        Pnai=P(7:end,7:end);
-        Pnai=Pnai+sigmaNp^2*eye(Nii+1);
-        Pnai=diag(Pnai);
-        for s=1:Nii+1
-            Pna(sats==satsOn(s),k+1)=Pnai(s);
-        end
     end
 end
 %% Smoothing
@@ -268,8 +331,8 @@ end
 %% solution
 hx=hx';
 fprintf('\nKinematic processing finished!\n')
-fprintf('Max. baseline: %.2fkm\n',max(baseline)/1e3)
-if max(baseline)/1e3 >10
-    warning('Long-baseline!')
-end
+% fprintf('Max. baseline: %.2fkm\n',max(baseline)/1e3)
+% if max(baseline)/1e3 >10
+%     warning('Long-baseline!')
+% end
 end
