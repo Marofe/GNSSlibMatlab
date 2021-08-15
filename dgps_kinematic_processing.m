@@ -2,12 +2,15 @@ close all
 clear all
 clc
 format long
-addLibrary('gnsslib')
+addLibrary('C:\Users\Marcos\Dropbox\Matlab\GNSS\gnsslib')
 addpath('data')
 %% To-do-list
 % -> Glonass
 % -> IMM-Kalman-filter
+% -> UKF
 % -> Kinematic: 
+%           - improve the ambiguity correlation
+%           - backward
 %           - smoothing
 %% GPS Standard Precision Processing (NLS)
 % file='circular';
@@ -21,14 +24,16 @@ rover='data/gnss_logger_dat-2021-01-27-13-14-20';
 % %% Load RTKLIB files (ground-truth)
 %diffGnss=loadGnssData([rover '-diff.pos']);
 diffGnssFwd=loadGnssData('gnss_logger_dat-2021-01-27-13-14-20-sol1_fix_fwd.pos');
+diffGnssBck=loadGnssData('gnss_logger_dat-2021-01-27-13-14-20-sol2_fix_bck.pos');
 load('gnss-data-20210127.mat')
+diffGnss=loadGnssData('gnss_logger_dat-2021-01-27-13-14-20-sol3_fix_fwd_bck_gps.pos');
 %% Select GPS only data
 gpsObsBase=allObsBase(:,3)==1;
 obsBase=allObsBase(gpsObsBase,:);
 gpsObsRover=allObsRover(:,3)==1;
 obsRover=allObsRover(gpsObsRover,:);
 %% Elevation Mask
-elevMask=10;
+elevMask=12;
 %% Base coordinate
 antHeight=2.105;
 lat=[-23 17 37.9762];
@@ -71,8 +76,10 @@ obsRef=obsBase(obsBase(:,4)==obsRover(1,4),:);
 load('single')
 %% Least Square Solution (Kinematic)
 tic
-[time2,pdiff2,dNa,satsOnView,sats,Ra,cycleSlip]=KinematicSolution(ephemeris,obsBase,obsRover,p0base,p0rover,elevMask);
+[time2,pdiff2,dNa,satsOnView,sats,Ra,cycleSlip,res]=KinematicSolution(ephemeris,obsBase,obsRover,p0base,p0rover,elevMask);
 dNa(dNa==0)=NaN;
+res.rho(res.rho==0)=NaN;
+res.phi(res.phi==0)=NaN;
 fprintf('\nElapsed time=%.3f min',toc/60);
 %% 
 err2=diffGnss(1:end-1,2:4)-pls(:,1:3); %Single
@@ -99,7 +106,7 @@ plot(alt3,'-','linewidth',1.5)
 plot(diffGnss(1,7)+(Ra>3),'s-g')
 grid on
 plot(diffGnss(1,7)+10*cycleSlip,'r-s')
-legend('RTKLIB-Diff','RTKLIB-fwd','Kinematic','FIX','Cycle-Slip')
+% legend('RTKLIB-Diff','RTKLIB-fwd','Kinematic','FIX','Cycle-Slip')
 %%
 figure
 plot(dNa')
@@ -117,3 +124,6 @@ figure
 plot(Ra)
 hold on
 plot(sum(satsOnView))
+%% Residues
+figure,plot(res.rho'),title('CODE Residue')
+figure,plot(res.phi'),title('PHASE Residue'),hold on,stem(cycleSlip,'r')
