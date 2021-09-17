@@ -1,5 +1,10 @@
 #DATASET
 data/
+LAMBDA/
 *.asv
 *.pos
 *.mat
+*.pdf
+*.fig
+*.svg
+*.eps
